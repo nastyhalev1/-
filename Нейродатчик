@@ -1,0 +1,65 @@
+import serial
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from collections import deque
+from scipy.signal import butter, lfilter, lfilter_zi
+import time
+
+PORT = 'COM10'
+BAUD = 115200
+FS = 250
+WINDOW = 500
+
+LOWCUT = 8.0
+HIGHCUT = 12.0
+
+def butter_bandpass(lowcut, highcut, fs, order=4):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    return b, a
+
+b, a = butter_bandpass(LOWCUT, HIGHCUT, FS)
+zi = lfilter_zi(b, a)
+
+ser = serial.Serial(PORT, BAUD, timeout=1)
+time.sleep(2)
+
+raw_data = deque([512.0] * WINDOW, maxlen=WINDOW)
+filt_data = deque([0.0] * WINDOW, maxlen=WINDOW)
+
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+
+line_raw, = ax1.plot(raw_data, color='gray', linewidth=0.8)
+ax1.set_ylim(0, 1023)
+ax1.set_title('СЃС‹СЂРѕР№ СЃРёРіРЅР°Р» (ADC)')
+ax1.grid(True)
+
+line_filt, = ax2.plot(filt_data, color='blue', linewidth=1.2)
+ax2.set_ylim(-50, 50)
+ax2.set_title('РѕС‚С„РёР»СЊС‚СЂРѕРІР°РЅРЅС‹Рµ Р°Р»СЊС„Р° (8пїЅ12 пїЅпїЅ)')
+ax2.set_xlabel('РѕС‚СЃС‡С‘С‚С‹')
+ax2.grid(True)
+
+def update(frame):
+    global zi
+    while ser.in_waiting:
+        try:
+            val = float(ser.readline().decode().strip())
+            raw_data.append(val)
+
+            #С„РёР»СЊС‚СЂСѓРµРј
+            filtered, zi = lfilter(b, a, [val], zi=zi)
+            filt_data.append(filtered[0])
+        except:
+            pass
+
+    line_raw.set_ydata(raw_data)
+    line_filt.set_ydata(filt_data)
+    return line_raw, line_filt
+
+ani = animation.FuncAnimation(fig, update, interval=20, blit=True, cache_frame_data=False)
+plt.tight_layout()
+plt.show()
